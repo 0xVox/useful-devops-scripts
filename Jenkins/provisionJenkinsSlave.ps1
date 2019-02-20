@@ -5,6 +5,7 @@ $ErrorActionPreference = "Stop"
 
 $agentJar = "C:\Agents\agent.jar"
 $cliJar = "C:\Agents\jenkins-cli.jar"
+$webClient = New-Object System.Net.WebClient
 
 param (
     [Parameter(Mandatory=$true)][string]$buildNumber,          # Jenkins build number.
@@ -45,18 +46,18 @@ function GetAgentFiles {
     if($jarsFromS3){
         Copy-S3Object -KeyPrefix $jarsLocation -LocalFolder c:\Agents -BucketName $jarsS3Bucket -Region $jarsAWSRegion
     } else {
-        $webClient = New-Object System.Net.WebClient
         $webClient.DownloadFile("$jarsLocation/jenkins-cli.jar", $cliJar)
         $webClient.DownloadFile("$jarsLocation/agent.jar", $agentJar)
     }
 }
 
 ## Check parameter validity and perform required manipulations.
-
+# Jar Location validity
 if($jarsFromS3 -eq $true -and [string]::IsNullOrEmpty($jarsBucket)){
     throw "If getting .jar files from S3 you must specify the -jarsBucket parameter."
 }
 
+# URL Validity
 if(!($masterUrl -Like "http://*" -or $masterUrl -Like "https://*")){
     throw "Please include https / http prefix in the masterUrl parameter."
 } else {
@@ -64,12 +65,15 @@ if(!($masterUrl -Like "http://*" -or $masterUrl -Like "https://*")){
     $hostsFileEntry = "`n$masterIp  $masterUrlHostsFormat"
 }
 
-## Execution
-# Add master node to hosts file (In case of private networks)
-$hostsFileEntry | Add-Content "C:\Windows\System32\drivers\etc\hosts"
+# Manipulations
 $auth = $user + ":" + $apiKey
 $nodeName = $((Get-WmiObject win32_computersystem).DNSHostName)
 $label = "$projectName-$buildNumber"
+
+## Execution
+
+# Add master node to hosts file (In case of private networks)
+$hostsFileEntry | Add-Content "C:\Windows\System32\drivers\etc\hosts"
 
 GetAgentFiles
 
@@ -96,7 +100,6 @@ $stdin = @"
 </slave>
 "@
 
-# Create node on Master
 try{
     $stdin | java -jar $cliJar -s $masterUrl -auth $auth create-node $nodeName
 }
@@ -104,9 +107,7 @@ catch{
     throw "Failed! Does the node already exist?"
 }
 
-# Connect node to master #
 # Get secret
-$webClient = new-object System.Net.WebClient
 $webClient.Headers.Add("Authorization","Basic "+
     [System.Convert]::ToBase64String(
         [System.Text.Encoding]::ASCII.GetBytes("$($user):$apiKey")
@@ -117,7 +118,6 @@ $url = "$masterUrl/computer/$nodeName/slave-agent.jnlp"
 $webClient.DownloadFile($url, $outputFile)
 $Xpath = '/jnlp/application-desc/argument[1]'
 $secret = $(Select-Xml -Content $(Get-Content $outputFile) -XPath $Xpath | Select-Object -ExpandProperty Node).'#text'
-Write-Output "The secret is: $secret"
 
 # Run agent
 $cmd = "-jar $agentJar -jnlpUrl $masterUrl/computer/$nodeName/slave-agent.jnlp -secret $secret -workDir $workDir"
@@ -126,7 +126,7 @@ RunScriptAsScheduledTask "JenkinsSlave" "C:\BuildScripts\RunAgent.ps1 -cmd {$cmd
 # Test agent connection
 Start-Sleep 10
 $timeout = Get-Date
-Get-Content C:\stderr-slave.txt -Wait -Tail 20 | % {
+Get-Content C:\stderr-slave.txt -Wait -Tail 20 | % { # Read the output file until output success or timeout
     Write-Output $_
     if($_ -Like "INFO: Connected"){
         Write-Output "Connection Succesfull!"

@@ -1,0 +1,118 @@
+/* hostNames()
+Returns the label of every node in Jenkins beginning with a specified label.
+*/
+
+@NonCPS
+def hostNames(label) {
+    def nodes = []
+    def count = jenkins.model.Jenkins.instance.computers.size()
+    def comp = jenkins.model.Jenkins.instance.computers
+
+    for(i=0; i<count; i++){
+        if(comp[i].node.labelString.contains(label)){
+            echo "labelString ${comp[i].node.labelString}"
+            nodes.add(comp[i].node.labelString)
+        }
+    }
+
+    return nodes
+}
+
+/* setSteps()
+Builds a dictionary with a parallel execution of the "runTests()" function in each given node "nodeName"
+*/
+@NonCPS
+def setSteps(nodeNames) {
+    def stepsForParallel = [:]
+
+    for(int i = 0; i < nodeNames.size(); i++){
+        def nodeName = nodeNames.get(i)
+        stepsForParallel["node_${i}"] = { ->
+            runTests(nodeName)
+        }
+    }
+
+    return stepsForParallel
+}
+
+/* runTests()
+Runs tests on a given node
+*/
+def runTests(nodeNameStr){
+    node ("${nodeNameStr}"){
+        // Run whatever scripts need running on the test node to begin tests!
+    }
+}
+
+pipeline {
+    agent none
+    parameters {
+        string(name: 'servercount', defaultValue: '10', description: 'How many test servers to run')
+    }
+    environment {
+        VERSION = ''
+    }
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '30',artifactNumToKeepStr: '30'))
+    }
+    stages {
+        stage('Deploy') {
+            agent {
+                label "master"
+            }
+            steps {
+                // Deploy build servers [TF]
+            }
+        }
+
+        stage('Build') {
+            options{
+                skipDefaultCheckout()
+            }
+            agent {
+                label "*Your project name*-builds-${env.BUILD_NUMBER}"
+            }
+            steps {
+                // Run build script
+            }
+            post {
+                always {
+                    node('master'){
+                        // Tear down build server [TF]
+                    }
+                }
+            }
+        }
+
+       stage('Deploy Test Servers') {
+            agent {
+                label "master"
+            }
+            steps {
+                script{
+                    // Deploy test server scripts [TF]
+                }
+            }
+        }
+
+        stage('Unit Testing'){
+            agent{
+                label 'master'
+            }
+            steps {
+                script {
+                    // Exec groovy scripts to get all relevant test nodes, then create the parallel dictionary and run!
+                    def nodeNames = hostNames("*Your project Name*-tests-${BUILD_NUMBER}-")
+                    def stepsForParallel = setSteps(nodeNames)
+                    parallel stepsForParallel
+                }
+            }
+
+            post {
+                always {
+                    // Tear down test servers
+                }
+            }
+        }
+    }
+}

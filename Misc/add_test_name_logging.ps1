@@ -29,7 +29,7 @@ function getLine {
         [string]$originalLine
     )
     # line to set var for getting the name of the current method
-    $getMethodNameCommand = "string testName = System.Reflection.MethodBase.GetCurrentMethod.Name;"
+    $getMethodNameCommand = "string testName = System.Reflection.MethodBase.GetCurrentMethod().Name;"
     # line to log that variable
     $logCall = "log.Info(String.Format(""Starting Test: {0}"", testName));"
 
@@ -51,19 +51,39 @@ $countFiles = 0
 $countTestsEdited = 0
 $nextLine = $false
 $printNextLine = $false
+$countLogFrameworkAdded = 0
 
 Get-ChildItem -Recurse -Path $pathTohunt | %{
     # Look only for files that end in tests or test.
-    if ($_.Name -Like "*Tests.cs" -or $_.Name -Like "*Test.cs")
+    if (($_.Name -Like "*Tests.cs" -or $_.Name -Like "*Test.cs") -and -not ($_.Name -like "*.csproj"))
     {
+        
+        $checkNextUsing = $false
         $countFiles += 1
         Write-Output "Found $($_.Name)"
         $countTestsEditedInFile = 0
-
         $newFileContents = ""
+        $foundLog = $false
 
         # Read file line-by-line
         foreach($line in [System.IO.File]::ReadLines($_.FullName)){
+            if(($line -Like "using *") -and -not $foundLog){
+                if($line -Like "*using log4net.Core*"){
+                    $foundLog = $true
+                    $checkNextUsing = $false
+                } else {
+                    $checkNextUsing = $true
+                }
+            } elseif ($checkNextUsing){
+
+                #reached end of "using" statements with no log4net ref
+                $countLogFrameworkAdded += 1
+                $line ="using log4net.Core;
+$line"
+                $foundLog = $true
+                $checkNextUsing = $false
+            }
+
             if($line -Like "*TestMethod*" -and -not ($line -like "*region*") -and -not ($line -like "*//*") -and -not ($line -like "*/\**")){
                 # If we find a method tagged as a test we assume the next line is its declaration.
                 $nextLine = $true
@@ -120,4 +140,4 @@ $line"
 
 }
 
-Write-Output "Found $countFiles classes and updated $countTestsEdited tests"
+Write-Output "Found $countFiles classes and updated $countTestsEdited tests. Added logging framework to $countLogFrameworkAdded classes."

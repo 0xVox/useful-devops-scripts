@@ -1,4 +1,4 @@
-# Author: 0xVox
+# Author: 0xVox & Harley Thorne
 # Provision Jenkins Slave
 # A script for provisioning a Jenkins slave with a master node.
 $ErrorActionPreference = "Stop"

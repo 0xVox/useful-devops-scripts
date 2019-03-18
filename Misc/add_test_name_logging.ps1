@@ -3,6 +3,12 @@
 # but cant be bothered to manually edit over a thousand tests? You're in the right place.
 # Written for some C# code using mstest testing framework but you can edit the lines to look for and the methods
 # to use for getting the function name / logging out the results.
+#
+## Usage:
+# ./add_test_name_logging.ps1 -pathToHunt *Path to repository* -dryRun
+#### Will do a dry run, just editing the first file it finds and outputting the intended result to a test.cs file in the cwd.
+# ./add_test_name_logging.ps1 -pathTohunt *Path to repository* 
+#### The real deal - will change all files matching the check @ line 56 and then all lines matching the other checks
 
 param(
     # Path to hunt for tests in

@@ -173,7 +173,7 @@ if($single.IsPresent)
 
     # Get edited contents
     $newFileInfo = (processLines -file $file)
-    
+
     # Adjust counts
     $countFiles = 1
     $countTestsEdited += $newFileInfo.editCount

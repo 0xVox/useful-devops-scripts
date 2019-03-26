@@ -1,2 +1,7 @@
-terraform.tfvars
+
+.terraform
 .vscode
+
+terraform.tfvars
+*.tfstate*
+*.tfvars*

@@ -109,7 +109,6 @@ $line
             # Sometimes tests are tagged with expected exceptions, if so check the next line
             if($line -Like "*ExpectedException*"){
                 $nextLine = $true
-                continue
             }
 
             $nextLine = $false

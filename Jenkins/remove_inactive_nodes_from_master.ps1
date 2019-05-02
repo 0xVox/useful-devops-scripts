@@ -72,3 +72,6 @@ foreach($node in $nodenames_offline){
     while($ie.Busy -eq $true){Start-Sleep -seconds 1;}
 }
 
+# Kill IE Session
+$ie.Quit()
+

@@ -51,13 +51,16 @@ $tbl_computers = $ie.Document.IHTMLDocument3_GetElementByID("computers")
 # Declare dynamic array for storing computer names, for building URLs later.
 $nodenames_offline = [System.Collections.ArrayList]::new()
 
-foreach($row in $tbl_computers.IHTMLTable_rows) 
+foreach($row in $tbl_computers.IHTMLTable_rows)
 {
     $splitHtml = $row.innerHTML -Split ' '
 
+
+
     if('data="computer-x.png"><img' -in $splitHtml)
     {
-        $nodenames_offline.add(($row.IHTMLElement_outerText -Split 'N/A')[0])
+        # Add computer name
+        $nodenames_offline.add($row.children[1].IHTMLElement_innerText)
     }
 }
 

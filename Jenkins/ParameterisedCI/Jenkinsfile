@@ -1,0 +1,145 @@
+import java.lang.StringBuilder
+
+@NonCPS
+def getBuildSetting(optionsScript, optionsFile, option){
+    def stdout = new StringBuilder()
+    def stderr = new StringBuilder()
+
+    def proc = "powershell.exe -File \"$optionsScript\" -optionsFile \"$optionsFile\" -option \"$option\"".execute()
+    proc.consumeProcessOutput(stdout, stderr)
+    proc.waitForOrKill(1000)
+
+    return stdout.toString().trim()
+}
+
+buildOn = ''
+testOn = ''
+destroyOn = ''
+commitHash = ''
+branchName = ''
+buildNumber = ''
+
+pipeline {
+    agent none
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '30',artifactNumToKeepStr: '30'))
+    }
+    stages {
+        stage('Deploy') {
+            agent {
+                label "master"
+            }
+            steps {
+                script {
+                    buildOn = getBuildSetting("${WORKSPACE}\\Infrastructure\\BuildScripts\\optionsParse.ps1", "${WORKSPACE}\\buildOptions.json", "build")
+                    testOn = getBuildSetting("${WORKSPACE}\\Infrastructure\\BuildScripts\\optionsParse.ps1", "${WORKSPACE}\\buildOptions.json", "test")
+                    destroyOn = getBuildSetting("${WORKSPACE}\\Infrastructure\\BuildScripts\\optionsParse.ps1", "${WORKSPACE}\\buildOptions.json", "destroy")
+                    emailOn = getBuildSetting("${WORKSPACE}\\Infrastructure\\BuildScripts\\optionsParse.ps1", "${WORKSPACE}\\buildOptions.json", "email")
+                    ami_id = getBuildSetting("${WORKSPACE}\\Infrastructure\\BuildScripts\\optionsParse.ps1", "${WORKSPACE}\\buildOptions.json", "ami")
+
+                    commitHash = env.GIT_COMMIT
+                    branchName = env.BRANCH_NAME
+                    buildNumber = env.BUILD_NUMBER
+                    
+                    echo "Got build settings:\r build: $buildOn \r test: $testOn \r destroy: $destroyOn \r commit: $commitHash \r branch: $branchName \r build no: $buildNumber"
+                    println("buildOn: $buildOn")
+                    
+                    try{
+                        if (buildOn == "true"){
+                            echo "BUILD SERVER DEPLOY!"
+                            // Deployment of a build server, e.g. terraform script
+                        } else {
+                            error("Build not set to run.")
+                        }
+                    } catch (e) {
+                        if (buildOn == "false"){
+                            currentBuild.result = 'ABORTED'
+                        }
+                        throw e
+                   }
+                }
+            }
+        }
+
+        stage('Build') {
+            agent {
+                label "build-${env.BUILD_NUMBER}"
+            }
+            steps {
+                echo "BUILD"
+                // Steps to build software
+            }
+        }
+
+        stage('Install') {
+            agent {
+                label "build-${env.BUILD_NUMBER}"
+                // label "master"
+            }
+            steps {
+                echo "INSTALL"
+                // Run installation of software from build output
+            }
+        }
+
+        stage('Unit Testing') {
+            agent {
+                label 'master'
+            }
+            steps{
+                parallel unittests: { // C# Application Code Unit Tests on Build Server
+                    node("build-${env.BUILD_NUMBER}") {
+                        script {
+                            println("testOn: $testOn")
+                            if (testOn == "true"){
+                                // Run tests
+
+                                // Get Results
+                                junit '**/TestResults/*.xml'
+                            } else {
+                                echo "TESTING SKIPPED"
+                            }
+                        }
+                    }
+                },
+                
+                qaauto: {
+                    node("master") { // Possible parallel test runs?
+                        script{
+                            if (testOn == "true"){
+                                // Run
+                            } else {
+                                echo 'Don\'t attempt Parallel Test'
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+
+    post {
+        always {
+            node('master'){
+                script{
+                    println("destroyOn: $destroyOn")                    
+                    if(emailOn == "true"){
+                        // Send email with results of pipeline
+                    }
+                    
+                    if(destroyOn == "true"){
+                        echo "DESTROYING"
+                        // e.g. Destroy terraform instance
+                    } else {
+                        echo "NOT DESTROYING"
+                        echo "Instance destruction turned off, don't forget to tidy up when you're done with it!"
+                    }
+                }
+            }
+        }
+        
+    }
+}
+            
+

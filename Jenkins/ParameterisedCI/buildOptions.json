@@ -1,0 +1,10 @@
+{
+    "_comment": "Set whether jenkins should build, test or destroy this commit. If build is false no other steps will run.",
+    "buildOptions": {
+        "build"  : "true",
+        "test"   : "true",
+        "destroy": "true",
+        "email"  : "true",
+        "ami" : "ami-01a9c70cc79a209a9"
+    }
+}

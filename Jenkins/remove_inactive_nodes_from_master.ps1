@@ -50,9 +50,7 @@ $COMPUTERS_INFO_URL = "$jenkins_url/computer"
 $COMPUTERS_INFO_API = "$COMPUTERS_INFO_URL/$API_APPEND"
 
 $headers = getCrumbedHeaders
-Invoke-WebRequest -UseBasicParsing $COMPUTERS_INFO_API -Method GET -Headers $headers -ContentType "application/json"
 $computers_info = ConvertFrom-Json (Invoke-WebRequest -UseBasicParsing $COMPUTERS_INFO_API -Method GET -Headers $headers -ContentType "application/json").content
-
 
 $offline_nodes = [System.Collections.ArrayList]::New()
 
@@ -66,7 +64,6 @@ $count = 0
 foreach ($node in $offline_nodes) {
     $delete_url = "$COMPUTERS_INFO_URL/$($node.displayName)/doDelete/api/json"
     $headers = getCrumbedHeaders
-    Write-Output $headers
     Invoke-WebRequest -UseBasicParsing $delete_url -Method POST -Headers $headers -ContentType "application/json"
     $count += 1
 }

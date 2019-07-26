@@ -11,70 +11,64 @@ param(
     # Jenkins password
     [Parameter(Mandatory=$true)]
     [string]
-    $jenkins_password,
+    $api_token,
 
     # Jenkins username
     [Parameter(Mandatory=$true)]
     [string]
-    $jenkins_username
+    $api_user
 )
 
-$ie = New-Object -ComObject 'internetExplorer.Application'
-$ie.Visible = $true
+$global:api_token = $api_token
+$global:api_user = $api_user
+$global:CRUMB_URL = "$jenkins_url/crumbIssuer/api/json"
 
-$ie.Navigate($jenkins_url)
-while ($ie.Busy -eq $true){Start-Sleep -seconds 1;}
+# Return headers with a valid crumb for the request
+function getCrumbedHeaders() {
 
-# Define Login page buttons
-$txt_username = $ie.Document.IHTMLDocument3_GetElementByID("j_username")
-$txt_password = $ie.Document.IHTMLDocument3_GetElementByID("j_password")
-$btn_login = $ie.Document.IHTMLDocument3_GetElementByID("submit")
+    $headers = $null
+    $headers = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
+    $headers.Add("Authorization", "Basic "+
+        [System.Convert]::ToBase64String(
+            [System.Text.Encoding]::ASCII.GetBytes(
+                "$($global:api_user):$global:api_token"
+            )
+        )
+    )
 
+    $crumbContent = ConvertFrom-JSON (Invoke-WebRequest -UseBasicParsing $global:CRUMB_URL -Method GET -Headers $headers).content
+    $headers.Add($crumbContent.crumbRequestField, $crumbContent.crumb)
+    $headers.Add("Accept", "application/json")
 
-# Exec login
-$txt_username.Value = $jenkins_username
-$txt_password.Value = $jenkins_password
-$btn_login.click()
-
-# Wait for login
-while ($ie.Busy -eq $true){Start-Sleep -seconds 1;}
-
-# Navigate to computers page
-$ie.Navigate("$jenkins_url/computer")
-
-# Wait for page load
-while ($ie.Busy -eq $true){Start-Sleep -seconds 1;}
-
-# Get table with computer names
-$tbl_computers = $ie.Document.IHTMLDocument3_GetElementByID("computers")
-
-# Declare dynamic array for storing computer names, for building URLs later.
-$nodenames_offline = [System.Collections.ArrayList]::new()
-
-foreach($row in $tbl_computers.IHTMLTable_rows)
-{
-    $splitHtml = $row.innerHTML -Split ' '
+    return $headers
+}
 
 
 
-    if('data="computer-x.png"><img' -in $splitHtml)
-    {
-        # Add computer name
-        $nodenames_offline.add($row.children[1].IHTMLElement_innerText)
+$API_APPEND = "api/json"
+$COMPUTERS_INFO_URL = "$jenkins_url/computer"
+$COMPUTERS_INFO_API = "$COMPUTERS_INFO_URL/$API_APPEND"
+
+$headers = getCrumbedHeaders
+Invoke-WebRequest -UseBasicParsing $COMPUTERS_INFO_API -Method GET -Headers $headers -ContentType "application/json"
+$computers_info = ConvertFrom-Json (Invoke-WebRequest -UseBasicParsing $COMPUTERS_INFO_API -Method GET -Headers $headers -ContentType "application/json").content
+
+
+$offline_nodes = [System.Collections.ArrayList]::New()
+
+foreach($comp in $computers_info.computer) {
+    if($comp.offline -eq "true") {
+        $offline_nodes.Add($comp)
     }
 }
 
-foreach($node in $nodenames_offline){
-    $ie.Navigate("$jenkins_url/computer/$node/delete")
-
-    while ($ie.Busy -eq $true){Start-Sleep -seconds 1;}
-
-    $btn_delete = $ie.Document.IHTMLDocument3_GetElementByID("yui-gen4-button")
-    $btn_delete.click()
-
-    while($ie.Busy -eq $true){Start-Sleep -seconds 1;}
+$count = 0
+foreach ($node in $offline_nodes) {
+    $delete_url = "$COMPUTERS_INFO_URL/$($node.displayName)/doDelete/api/json"
+    $headers = getCrumbedHeaders
+    Write-Output $headers
+    Invoke-WebRequest -UseBasicParsing $delete_url -Method POST -Headers $headers -ContentType "application/json"
+    $count += 1
 }
 
-# Kill IE Session
-$ie.Quit()
-
+Write-Output "Removed $count nodes"

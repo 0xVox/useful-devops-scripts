@@ -64,7 +64,8 @@ $count = 0
 foreach ($node in $offline_nodes) {
     $delete_url = "$COMPUTERS_INFO_URL/$($node.displayName)/doDelete/api/json"
     $headers = getCrumbedHeaders
-    Invoke-WebRequest -UseBasicParsing $delete_url -Method POST -Headers $headers -ContentType "application/json"
+    # Invoke delete command - this command throws a false-positive authentication error therefore I've redirected stderr to null.
+    Invoke-WebRequest -UseBasicParsing $delete_url -Method POST -Headers $headers -ContentType "application/json" 2> $null
     $count += 1
 }
 
